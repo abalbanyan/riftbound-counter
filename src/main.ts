@@ -448,10 +448,12 @@ class RiftboundCounter {
 
     counter.classList.add("dragging");
 
-    const { available } = this.getAvailableAnchors();
+    // Show all valid anchors (available + swappable occupied ones)
+    const { available, occupied } = this.getAvailableAnchors();
+    const validAnchors = this.getValidDropTargets(available, occupied);
     document.querySelectorAll<HTMLElement>(".anchor-point").forEach((anchor) => {
       const anchorName = anchor.dataset.anchor as AnchorName;
-      if (available.has(anchorName) || anchorName === this.slotAssignments[playerIndex]) {
+      if (validAnchors.has(anchorName) || anchorName === this.slotAssignments[playerIndex]) {
         anchor.classList.add("active");
       }
     });
@@ -463,6 +465,16 @@ class RiftboundCounter {
     document.addEventListener("touchmove", moveHandler, { passive: false });
     document.addEventListener("mouseup", endHandler);
     document.addEventListener("touchend", endHandler);
+  }
+
+  // Get all valid drop targets: available anchors + occupied anchors that can be swapped
+  getValidDropTargets(available: Set<AnchorName>, occupied: Record<string, number>): Set<AnchorName> {
+    const valid = new Set(available);
+    // Add occupied anchors (for swapping)
+    for (const slot of Object.keys(occupied)) {
+      valid.add(slot as AnchorName);
+    }
+    return valid;
   }
 
   onDrag(e: MouseEvent | TouchEvent) {
@@ -487,13 +499,14 @@ class RiftboundCounter {
     const relX = (clientX - this.gameAreaRect.left) / this.gameAreaRect.width;
     const relY = (clientY - this.gameAreaRect.top) / this.gameAreaRect.height;
 
-    const { available } = this.getAvailableAnchors();
-    available.add(this.slotAssignments[this.draggedPlayerId]);
+    const { available, occupied } = this.getAvailableAnchors();
+    const validAnchors = this.getValidDropTargets(available, occupied);
+    validAnchors.add(this.slotAssignments[this.draggedPlayerId]);
 
     let closestAnchor: AnchorName | null = null;
     let minDistance = Infinity;
 
-    for (const anchorName of available) {
+    for (const anchorName of validAnchors) {
       const config = ANCHOR_CONFIGS[anchorName];
       let centerX = config.x + config.width / 2;
       let centerY = config.y + config.height / 2;
@@ -515,7 +528,7 @@ class RiftboundCounter {
       const anchorName = anchor.dataset.anchor as AnchorName;
       anchor.classList.remove("highlight");
 
-      if (anchorName === closestAnchor && available.has(anchorName)) {
+      if (anchorName === closestAnchor && validAnchors.has(anchorName)) {
         anchor.classList.add("highlight");
         this.updateAnchorPreview(anchor, ANCHOR_CONFIGS[anchorName]);
       }
@@ -556,12 +569,13 @@ class RiftboundCounter {
     const relY = (clientY - this.gameAreaRect.top) / this.gameAreaRect.height;
 
     const { available, occupied } = this.getAvailableAnchors();
-    available.add(this.slotAssignments[this.draggedPlayerId]);
+    const validAnchors = this.getValidDropTargets(available, occupied);
+    validAnchors.add(this.slotAssignments[this.draggedPlayerId]);
 
     let targetAnchor: AnchorName | null = null;
     let minDistance = Infinity;
 
-    for (const anchorName of available) {
+    for (const anchorName of validAnchors) {
       const config = ANCHOR_CONFIGS[anchorName];
       let centerX = config.x + config.width / 2;
       let centerY = config.y + config.height / 2;
@@ -579,9 +593,10 @@ class RiftboundCounter {
       }
     }
 
-    if (targetAnchor && available.has(targetAnchor)) {
+    if (targetAnchor && validAnchors.has(targetAnchor)) {
       const playerInTarget = occupied[targetAnchor];
       if (playerInTarget !== undefined) {
+        // Swap: move the other player to our current slot
         const currentSlot = this.slotAssignments[this.draggedPlayerId];
         this.slotAssignments[playerInTarget] = currentSlot;
       }
