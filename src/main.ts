@@ -11,10 +11,19 @@ const ANCHOR_CONFIGS = {
 
 type AnchorName = keyof typeof ANCHOR_CONFIGS;
 
+interface Legend {
+  name: string;
+  photoUrl: string;
+  rarity: string;
+  tags: string[];
+  setName: string;
+}
+
 class RiftboundCounter {
   playerCount: number;
   scores: Record<number, number>;
   names: Record<number, string>;
+  legends: Record<number, string>;
   slotAssignments: Record<number, AnchorName>;
   draggedElement: HTMLElement | null;
   draggedPlayerId: number | null;
@@ -22,16 +31,21 @@ class RiftboundCounter {
   dragStartPos:
     | { offsetX: number; offsetY: number; initialLeft: number; initialTop: number }
     | null;
+  legendsCache: Legend[] | null;
+  currentLegendPlayerIndex: number | null;
 
   constructor() {
     this.playerCount = parseInt(localStorage.getItem("playerCount") ?? "", 10) || 2;
     this.scores = JSON.parse(localStorage.getItem("scores") ?? "null") || {};
     this.names = JSON.parse(localStorage.getItem("names") ?? "null") || {};
+    this.legends = JSON.parse(localStorage.getItem("legends") ?? "null") || {};
     this.slotAssignments = JSON.parse(localStorage.getItem("slotAssignments") ?? "null") || {};
     this.draggedElement = null;
     this.draggedPlayerId = null;
     this.gameAreaRect = null;
     this.dragStartPos = null;
+    this.legendsCache = null;
+    this.currentLegendPlayerIndex = null;
 
     this.init();
   }
@@ -93,6 +107,19 @@ class RiftboundCounter {
 
     document.getElementById("closeRandomBtn")?.addEventListener("click", () => {
       document.getElementById("randomModal")?.classList.remove("active");
+    });
+
+    document.getElementById("closeLegendBtn")?.addEventListener("click", () => {
+      document.getElementById("legendModal")?.classList.remove("active");
+    });
+
+    // Close modals when clicking outside
+    document.querySelectorAll<HTMLElement>(".modal").forEach((modal) => {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) {
+          modal.classList.remove("active");
+        }
+      });
     });
   }
 
@@ -206,14 +233,27 @@ class RiftboundCounter {
     const name = this.names[playerIndex] || `Player ${playerIndex + 1}`;
     const score = this.scores[playerIndex] || 0;
 
+    const hasLegend = !!this.legends[playerIndex];
+
     counter.innerHTML = `
       <button class="counter-btn minus">-</button>
-      <div class="score-center">
-        <input type="text" class="player-name" value="${escapeHtml(name)}" maxlength="20" data-player="${playerIndex}">
-        <div class="score-display">${score}</div>
+      <div class="score-center${hasLegend ? " has-legend" : ""}">
+        <div class="score-info">
+          <input type="text" class="player-name" value="${escapeHtml(name)}" maxlength="20" data-player="${playerIndex}">
+          <div class="score-display">${score}</div>
+        </div>
+        <button class="legend-btn" data-player="${playerIndex}" title="Choose legend">+</button>
       </div>
       <button class="counter-btn plus">+</button>
     `;
+
+    // Apply legend background if one exists
+    if (hasLegend) {
+      const center = counter.querySelector<HTMLElement>(".score-center")!;
+      center.style.background = `
+        linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+        url("${this.legends[playerIndex]}") center top / cover no-repeat`;
+    }
 
     const nameInput = counter.querySelector<HTMLInputElement>(".player-name")!;
     nameInput.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -222,18 +262,29 @@ class RiftboundCounter {
     nameInput.addEventListener("blur", (e) => this.updateName(playerIndex, (e.target as HTMLInputElement).value));
 
     const center = counter.querySelector<HTMLElement>(".score-center")!;
+
     center.addEventListener("mousedown", (e) => {
       if ((e.target as HTMLElement).classList.contains("player-name")) return;
+      if ((e.target as HTMLElement).classList.contains("legend-btn")) return;
       this.startDrag(e as MouseEvent, counter, playerIndex);
     });
     center.addEventListener(
       "touchstart",
       (e) => {
         if ((e.target as HTMLElement).classList.contains("player-name")) return;
+        if ((e.target as HTMLElement).classList.contains("legend-btn")) return;
         this.startDrag(e as TouchEvent, counter, playerIndex);
       },
       { passive: false }
     );
+
+    const legendBtn = counter.querySelector<HTMLButtonElement>(".legend-btn")!;
+    legendBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.openLegendModal(playerIndex);
+    });
+    legendBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    legendBtn.addEventListener("touchstart", (e) => e.stopPropagation());
 
     counter.querySelector<HTMLButtonElement>(".minus")!.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -246,6 +297,133 @@ class RiftboundCounter {
     });
 
     return counter;
+  }
+
+  async openLegendModal(playerIndex: number) {
+    this.currentLegendPlayerIndex = playerIndex;
+
+    if (!this.legendsCache) {
+      const legendGrid = document.getElementById("legendGrid");
+      if (legendGrid) {
+        legendGrid.innerHTML = '<div class="modal-text">Loading legends...</div>';
+      }
+      document.getElementById("legendModal")?.classList.add("active");
+
+      try {
+        const response = await fetch("/legends.json");
+        this.legendsCache = await response.json();
+      } catch (error) {
+        console.error("Failed to load legends:", error);
+        const legendGrid = document.getElementById("legendGrid");
+        if (legendGrid) {
+          legendGrid.innerHTML = '<div class="modal-text">Failed to load legends</div>';
+        }
+        return;
+      }
+    } else {
+      document.getElementById("legendModal")?.classList.add("active");
+    }
+
+    this.renderLegendGrid();
+  }
+
+  renderLegendGrid() {
+    const legendGrid = document.getElementById("legendGrid");
+    if (!legendGrid || !this.legendsCache) return;
+
+    const setNameMap: Record<string, string> = {
+      SFD: "Spiritforged",
+    };
+
+    // Load collapsed states from localStorage
+    const collapsedSets: Record<string, boolean> = JSON.parse(localStorage.getItem("collapsedSets") ?? "{}");
+
+    // Filter out Showcase rarity and dedupe by photoUrl
+    const seenUrls = new Set<string>();
+    const filteredLegends = this.legendsCache.filter((legend) => {
+      if (legend.rarity === "Showcase") return false;
+      if (seenUrls.has(legend.photoUrl)) return false;
+      seenUrls.add(legend.photoUrl);
+      return true;
+    });
+
+    // Group legends by setName
+    const groupedLegends: Record<string, Legend[]> = {};
+    for (const legend of filteredLegends) {
+      if (!groupedLegends[legend.setName]) {
+        groupedLegends[legend.setName] = [];
+      }
+      groupedLegends[legend.setName].push(legend);
+    }
+
+    legendGrid.innerHTML = "";
+
+    // Reverse the order of sets
+    const setEntries = Object.entries(groupedLegends).reverse();
+
+    for (const [setName, legends] of setEntries) {
+      const group = document.createElement("div");
+      group.className = "legend-set-group";
+
+      // Restore collapsed state
+      if (collapsedSets[setName]) {
+        group.classList.add("collapsed");
+      }
+
+      const title = document.createElement("div");
+      title.className = "legend-set-title";
+      title.textContent = setNameMap[setName] || setName;
+      group.appendChild(title);
+
+      const cards = document.createElement("div");
+      cards.className = "legend-set-cards";
+
+      for (const legend of legends) {
+        const card = document.createElement("div");
+        card.className = "legend-card";
+        card.innerHTML = `<img src="${legend.photoUrl}" alt="${escapeHtml(legend.name)}" loading="lazy">`;
+        card.addEventListener("click", () => this.selectLegend(legend.photoUrl));
+        cards.appendChild(card);
+      }
+
+      group.appendChild(cards);
+      legendGrid.appendChild(group);
+
+      // Click title to toggle collapse and save state
+      title.addEventListener("click", () => {
+        group.classList.toggle("collapsed");
+        const isCollapsed = group.classList.contains("collapsed");
+        const currentCollapsed: Record<string, boolean> = JSON.parse(localStorage.getItem("collapsedSets") ?? "{}");
+        if (isCollapsed) {
+          currentCollapsed[setName] = true;
+        } else {
+          delete currentCollapsed[setName];
+        }
+        localStorage.setItem("collapsedSets", JSON.stringify(currentCollapsed));
+      });
+    }
+  }
+
+  selectLegend(photoUrl: string) {
+    if (this.currentLegendPlayerIndex === null) return;
+
+    this.legends[this.currentLegendPlayerIndex] = photoUrl;
+    localStorage.setItem("legends", JSON.stringify(this.legends));
+
+    // Update the background of the score-center
+    const counter = document.querySelector<HTMLElement>(`.score-counter[data-player="${this.currentLegendPlayerIndex}"]`);
+    if (counter) {
+      const center = counter.querySelector<HTMLElement>(".score-center");
+      if (center) {
+        center.classList.add("has-legend");
+        center.style.background = `
+          linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+          url("${photoUrl}") center top / cover no-repeat`;
+      }
+    }
+
+    document.getElementById("legendModal")?.classList.remove("active");
+    this.currentLegendPlayerIndex = null;
   }
 
   startDrag(e: MouseEvent | TouchEvent, counter: HTMLElement, playerIndex: number) {
@@ -489,9 +667,11 @@ class RiftboundCounter {
   resetAll() {
     this.scores = {};
     this.names = {};
+    this.legends = {};
     this.slotAssignments = {};
     localStorage.setItem("scores", JSON.stringify(this.scores));
     localStorage.setItem("names", JSON.stringify(this.names));
+    localStorage.setItem("legends", JSON.stringify(this.legends));
     localStorage.setItem("slotAssignments", JSON.stringify(this.slotAssignments));
     this.ensureSlotAssignments();
     this.renderCounters();
