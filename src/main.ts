@@ -310,7 +310,7 @@ class RiftboundCounter {
       document.getElementById("legendModal")?.classList.add("active");
 
       try {
-        const response = await fetch("/legends.json");
+        const response = await fetch("./legends.json");
         this.legendsCache = await response.json();
       } catch (error) {
         console.error("Failed to load legends:", error);
