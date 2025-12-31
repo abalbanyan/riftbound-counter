@@ -6,14 +6,11 @@ const PAGE_SIZE = 100;
 
 type Card = {
   name?: string;
-  released?: boolean;
   classification?: { type?: string };
-  media?: {
-    image_url?: string;
-  };
+  media?: { image_url?: string };
 };
 
-async function fetchReleasedLegends(): Promise<{ name: string; photoUrl: string }[]> {
+async function fetchLegends(): Promise<{ name: string; photoUrl: string }[]> {
   const legends: { name: string; photoUrl: string }[] = [];
 
   let page = 1;
@@ -23,9 +20,10 @@ async function fetchReleasedLegends(): Promise<{ name: string; photoUrl: string 
     const res = await fetch(`${BASE_URL}?page=${page}&size=${PAGE_SIZE}`, {
       headers: { Accept: "application/json" },
     });
+
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`Fetch failed page ${page}: ${res.status}`);
+      throw new Error(`Fetch failed page ${page}: ${res.status}\n${body}`);
     }
 
     const data = (await res.json()) as { items?: Card[]; pages?: number };
@@ -34,7 +32,6 @@ async function fetchReleasedLegends(): Promise<{ name: string; photoUrl: string 
     for (const card of data.items ?? []) {
       if (
         card?.classification?.type === "Legend" &&
-        card?.released === true &&
         card?.name &&
         card?.media?.image_url
       ) {
@@ -53,7 +50,7 @@ async function fetchReleasedLegends(): Promise<{ name: string; photoUrl: string 
 }
 
 async function main() {
-  const legends = await fetchReleasedLegends();
+  const legends = await fetchLegends();
 
   const outPath = path.join(process.cwd(), "public", "legends.json");
   mkdirSync(path.dirname(outPath), { recursive: true });
