@@ -6,12 +6,25 @@ const PAGE_SIZE = 100;
 
 type Card = {
   name?: string;
-  classification?: { type?: string };
+  classification?: {
+    type?: string;
+    rarity?: string | null;
+  };
   media?: { image_url?: string };
+  tags?: string[];
+  set?: { label?: string };
 };
 
-async function fetchLegends(): Promise<{ name: string; photoUrl: string }[]> {
-  const legends: { name: string; photoUrl: string }[] = [];
+type LegendOut = {
+  name: string;
+  photoUrl: string;
+  rarity: string | null;
+  tags: string[];
+  setName: string | null;
+};
+
+async function fetchLegends(): Promise<LegendOut[]> {
+  const legends: LegendOut[] = [];
 
   let page = 1;
   let pages = 1;
@@ -38,6 +51,9 @@ async function fetchLegends(): Promise<{ name: string; photoUrl: string }[]> {
         legends.push({
           name: card.name,
           photoUrl: card.media.image_url,
+          rarity: card.classification?.rarity ?? null,
+          tags: Array.isArray(card.tags) ? card.tags : [],
+          setName: card.set?.label ?? null,
         });
       }
     }
@@ -45,6 +61,7 @@ async function fetchLegends(): Promise<{ name: string; photoUrl: string }[]> {
     page++;
   }
 
+  // Stable ordering to avoid noisy diffs
   legends.sort((a, b) => a.name.localeCompare(b.name));
   return legends;
 }
