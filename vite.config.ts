@@ -4,6 +4,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 export default defineConfig({
   plugins: [viteSingleFile()],
   root: "src",
+  base: "/riftbound-counter/",
   build: {
     outDir: "../public",
     emptyOutDir: false,
