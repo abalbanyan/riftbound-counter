@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const BASE_URL = "https://api.riftcodex.com/cards";
-const PAGE_SIZE = 250;
+const PAGE_SIZE = 100;
 
 type Card = {
   name?: string;
@@ -23,7 +23,10 @@ async function fetchReleasedLegends(): Promise<{ name: string; photoUrl: string 
     const res = await fetch(`${BASE_URL}?page=${page}&size=${PAGE_SIZE}`, {
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) throw new Error(`Fetch failed page ${page}: ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Fetch failed page ${page}: ${res.status}`);
+    }
 
     const data = (await res.json()) as { items?: Card[]; pages?: number };
     pages = Number(data.pages ?? 1);
@@ -61,4 +64,5 @@ async function main() {
 
 main().catch((e) => {
   console.error(e);
+  process.exit(1);
 });
