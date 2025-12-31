@@ -448,12 +448,11 @@ class RiftboundCounter {
 
     counter.classList.add("dragging");
 
-    // Show all valid anchors (available + swappable occupied ones)
-    const { available, occupied } = this.getAvailableAnchors();
-    const validAnchors = this.getValidDropTargets(available, occupied);
+    // Show all anchor points as valid drop targets
+    const validAnchors = this.getValidDropTargets();
     document.querySelectorAll<HTMLElement>(".anchor-point").forEach((anchor) => {
       const anchorName = anchor.dataset.anchor as AnchorName;
-      if (validAnchors.has(anchorName) || anchorName === this.slotAssignments[playerIndex]) {
+      if (validAnchors.has(anchorName)) {
         anchor.classList.add("active");
       }
     });
@@ -467,13 +466,40 @@ class RiftboundCounter {
     document.addEventListener("touchend", endHandler);
   }
 
-  // Get all valid drop targets: available anchors + occupied anchors that can be swapped
-  getValidDropTargets(available: Set<AnchorName>, occupied: Record<string, number>): Set<AnchorName> {
-    const valid = new Set(available);
-    // Add occupied anchors (for swapping)
-    for (const slot of Object.keys(occupied)) {
-      valid.add(slot as AnchorName);
+  // Get the player who occupies a given anchor (directly or via overlap)
+  getPlayerAtAnchor(anchor: AnchorName): number | undefined {
+    // Check direct occupation first
+    for (const [playerIdStr, slot] of Object.entries(this.slotAssignments)) {
+      const playerId = parseInt(playerIdStr, 10);
+      if (playerId === this.draggedPlayerId) continue;
+      if (slot === anchor) return playerId;
     }
+
+    // Check overlap relationships
+    const overlapMap: Record<AnchorName, AnchorName[]> = {
+      "top-left": ["top", "left"],
+      "top-right": ["top", "right"],
+      "bottom-left": ["bottom", "left"],
+      "bottom-right": ["bottom", "right"],
+      top: ["top-left", "top-right"],
+      bottom: ["bottom-left", "bottom-right"],
+      left: ["top-left", "bottom-left"],
+      right: ["top-right", "bottom-right"],
+    };
+
+    const overlaps = overlapMap[anchor] || [];
+    for (const [playerIdStr, slot] of Object.entries(this.slotAssignments)) {
+      const playerId = parseInt(playerIdStr, 10);
+      if (playerId === this.draggedPlayerId) continue;
+      if (overlaps.includes(slot as AnchorName)) return playerId;
+    }
+
+    return undefined;
+  }
+
+  // Get all valid drop targets: all anchors where we can move (swap if occupied)
+  getValidDropTargets(): Set<AnchorName> {
+    const valid = new Set<AnchorName>(Object.keys(ANCHOR_CONFIGS) as AnchorName[]);
     return valid;
   }
 
@@ -499,9 +525,7 @@ class RiftboundCounter {
     const relX = (clientX - this.gameAreaRect.left) / this.gameAreaRect.width;
     const relY = (clientY - this.gameAreaRect.top) / this.gameAreaRect.height;
 
-    const { available, occupied } = this.getAvailableAnchors();
-    const validAnchors = this.getValidDropTargets(available, occupied);
-    validAnchors.add(this.slotAssignments[this.draggedPlayerId]);
+    const validAnchors = this.getValidDropTargets();
 
     let closestAnchor: AnchorName | null = null;
     let minDistance = Infinity;
@@ -568,9 +592,7 @@ class RiftboundCounter {
     const relX = (clientX - this.gameAreaRect.left) / this.gameAreaRect.width;
     const relY = (clientY - this.gameAreaRect.top) / this.gameAreaRect.height;
 
-    const { available, occupied } = this.getAvailableAnchors();
-    const validAnchors = this.getValidDropTargets(available, occupied);
-    validAnchors.add(this.slotAssignments[this.draggedPlayerId]);
+    const validAnchors = this.getValidDropTargets();
 
     let targetAnchor: AnchorName | null = null;
     let minDistance = Infinity;
@@ -594,7 +616,7 @@ class RiftboundCounter {
     }
 
     if (targetAnchor && validAnchors.has(targetAnchor)) {
-      const playerInTarget = occupied[targetAnchor];
+      const playerInTarget = this.getPlayerAtAnchor(targetAnchor);
       if (playerInTarget !== undefined) {
         // Swap: move the other player to our current slot
         const currentSlot = this.slotAssignments[this.draggedPlayerId];
@@ -628,15 +650,31 @@ class RiftboundCounter {
       if (anchorName && ANCHOR_CONFIGS[anchorName] && this.gameAreaRect) {
         const config = ANCHOR_CONFIGS[anchorName];
         const padding = 15;
-        const width = this.gameAreaRect.width * config.width - padding * 2;
-        const height = this.gameAreaRect.height * config.height - padding * 2;
+        const areaWidth = this.gameAreaRect.width * config.width - padding * 2;
+        const areaHeight = this.gameAreaRect.height * config.height - padding * 2;
         const x = this.gameAreaRect.width * config.x + padding;
         const y = this.gameAreaRect.height * config.y + padding;
 
-        counter.style.left = `${x}px`;
-        counter.style.top = `${y}px`;
-        counter.style.width = `${width}px`;
-        counter.style.height = `${height}px`;
+        // For 90/270 degree rotations, swap width/height since CSS transform rotates the element
+        // but we need the element's intrinsic dimensions to match the rotated visual space
+        const isRotated90or270 = config.rotation === "rotate-90" || config.rotation === "rotate-270";
+        const counterWidth = isRotated90or270 ? areaHeight : areaWidth;
+        const counterHeight = isRotated90or270 ? areaWidth : areaHeight;
+
+        // Adjust position for rotated elements - rotation is around center, so we need to offset
+        let adjustedX = x;
+        let adjustedY = y;
+        if (isRotated90or270) {
+          // After rotation, the element's visual position shifts. Compensate by adjusting x/y
+          const widthDiff = (areaHeight - areaWidth) / 2;
+          adjustedX = x - widthDiff;
+          adjustedY = y + widthDiff;
+        }
+
+        counter.style.left = `${adjustedX}px`;
+        counter.style.top = `${adjustedY}px`;
+        counter.style.width = `${counterWidth}px`;
+        counter.style.height = `${counterHeight}px`;
 
         counter.className = `score-counter ${config.rotation}`.trim();
       }
