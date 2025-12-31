@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Riftbound Counter</title>
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="/favicon.ico"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="header">
+      <div class="player-buttons">
+        <button class="player-btn active" data-players="2">2</button>
+        <button class="player-btn" data-players="3">3</button>
+        <button class="player-btn" data-players="4">4</button>
+      </div>
+      <div class="header-right">
+        <button class="random-btn" id="randomBtn" title="Pick random starting player">🎲</button>
+        <button class="reset-btn" id="resetBtn">↻</button>
+      </div>
+    </div>
+
+    <div class="game-area" id="gameArea">
+      <div class="anchor-point" data-anchor="top-left"></div>
+      <div class="anchor-point" data-anchor="top-right"></div>
+      <div class="anchor-point" data-anchor="bottom-left"></div>
+      <div class="anchor-point" data-anchor="bottom-right"></div>
+      <div class="anchor-point" data-anchor="left"></div>
+      <div class="anchor-point" data-anchor="right"></div>
+      <div class="anchor-point" data-anchor="top"></div>
+      <div class="anchor-point" data-anchor="bottom"></div>
+    </div>
+
+    <div class="modal" id="resetModal">
+      <div class="modal-content">
+        <div class="modal-title">Reset Options</div>
+        <div class="modal-buttons">
+          <button class="modal-btn" id="resetScoresBtn">Reset Scores</button>
+          <button class="modal-btn" id="resetAllBtn">Reset Players (Scores + Names)</button>
+          <button class="modal-btn secondary" id="cancelResetBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="randomModal">
+      <div class="modal-content">
+        <div class="modal-title">Starting Player</div>
+        <div class="modal-text" id="randomPlayerText"></div>
+        <div class="modal-buttons">
+          <button class="modal-btn" id="closeRandomBtn">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
