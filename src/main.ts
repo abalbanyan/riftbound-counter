@@ -1,10 +1,10 @@
 const RUNE_COLORS = {
-  Fury: "#8B1A1A",
-  Calm: "#1E5631",
-  Mind: "#1A3A5C",
-  Order: "#8B7500",
-  Body: "#8B4513",
-  Chaos: "#4A235A",
+  Fury: "#7B0E0C",
+  Calm: "#1F4918",
+  Mind: "#003E62",
+  Order: "#75561A",
+  Body: "#943215",
+  Chaos: "#3F216B",
   None: "#0a0e13",
 } as const;
 
@@ -528,7 +528,7 @@ class RiftboundCounter {
   applyBackground(element: HTMLElement, value: string) {
     if (value.startsWith("#")) {
       // It's a color
-      element.style.background = `linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), ${value}`;
+      element.style.background = value;
     } else {
       // It's an image URL
       element.style.background = `
