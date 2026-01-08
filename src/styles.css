@@ -398,6 +398,46 @@ body {
   transform: scale(1.05);
 }
 
+.color-swatches {
+  display: flex;
+  gap: 10px;
+  padding: 5px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid #463714;
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.color-swatch:hover {
+  border-color: #c89b3c;
+  transform: scale(1.1);
+}
+
+.color-swatch.selected {
+  border-color: #c89b3c;
+  transform: scale(1.1);
+  cursor: default;
+}
+
+.legend-card.selected {
+  border-color: #c89b3c;
+  cursor: default;
+}
+
+.legend-card.selected img {
+  transform: scale(1.05);
+}
+
+.legend-set-group.collapsed .color-swatches {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .score-display {
     font-size: 56px;

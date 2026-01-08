@@ -1,3 +1,15 @@
+const RUNE_COLORS = {
+  Fury: "#8B1A1A",
+  Calm: "#1E5631",
+  Mind: "#1A3A5C",
+  Order: "#8B7500",
+  Body: "#8B4513",
+  Chaos: "#4A235A",
+  None: "#0a0e13",
+} as const;
+
+type RuneColorName = keyof typeof RUNE_COLORS;
+
 const ANCHOR_CONFIGS = {
   "top-left": { x: 0, y: 0, width: 0.5, height: 0.5, rotation: "rotate-180" },
   "top-right": { x: 0.5, y: 0, width: 0.5, height: 0.5, rotation: "rotate-180" },
@@ -217,12 +229,45 @@ class RiftboundCounter {
 
     gameArea.querySelectorAll(".score-counter").forEach((c) => c.remove());
 
+    // Assign random colors to players who don't have a background
+    this.ensurePlayerBackgrounds();
+
     for (let i = 0; i < this.playerCount; i++) {
       const counter = this.createCounter(i);
       gameArea.appendChild(counter);
     }
 
     this.positionAllCounters();
+  }
+
+  ensurePlayerBackgrounds() {
+    const allColors = Object.values(RUNE_COLORS);
+    const usedColors = new Set<string>();
+
+    // Collect colors already in use by current players
+    for (let i = 0; i < this.playerCount; i++) {
+      const bg = this.legends[i];
+      if (bg && bg.startsWith("#")) {
+        usedColors.add(bg);
+      }
+    }
+
+    // Assign random unused color to players without a background
+    for (let i = 0; i < this.playerCount; i++) {
+      if (!this.legends[i]) {
+        const availableColors = allColors.filter((c) => !usedColors.has(c));
+        if (availableColors.length > 0) {
+          const randomColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+          this.legends[i] = randomColor;
+          usedColors.add(randomColor);
+        } else {
+          // All colors used, pick a random one
+          this.legends[i] = allColors[Math.floor(Math.random() * allColors.length)];
+        }
+      }
+    }
+
+    localStorage.setItem("legends", JSON.stringify(this.legends));
   }
 
   createCounter(playerIndex: number) {
@@ -242,17 +287,15 @@ class RiftboundCounter {
           <input type="text" class="player-name" value="${escapeHtml(name)}" maxlength="20" data-player="${playerIndex}">
           <div class="score-display">${score}</div>
         </div>
-        <button class="legend-btn" data-player="${playerIndex}" title="Choose legend">+</button>
+        <button class="legend-btn" data-player="${playerIndex}" title="Choose background">+</button>
       </div>
       <button class="counter-btn plus">+</button>
     `;
 
-    // Apply legend background if one exists
+    // Apply background if one exists
     if (hasLegend) {
       const center = counter.querySelector<HTMLElement>(".score-center")!;
-      center.style.background = `
-        linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-        url("${this.legends[playerIndex]}") center top / cover no-repeat`;
+      this.applyBackground(center, this.legends[playerIndex]);
     }
 
     const nameInput = counter.querySelector<HTMLInputElement>(".player-name")!;
@@ -329,7 +372,7 @@ class RiftboundCounter {
 
   renderLegendGrid() {
     const legendGrid = document.getElementById("legendGrid");
-    if (!legendGrid || !this.legendsCache) return;
+    if (!legendGrid) return;
 
     const setNameMap: Record<string, string> = {
       SFD: "Spiritforged",
@@ -337,6 +380,60 @@ class RiftboundCounter {
 
     // Load collapsed states from localStorage
     const collapsedSets: Record<string, boolean> = JSON.parse(localStorage.getItem("collapsedSets") ?? "{}");
+
+    legendGrid.innerHTML = "";
+
+    // Add Color section first (always at top)
+    const colorGroup = document.createElement("div");
+    colorGroup.className = "legend-set-group";
+    if (collapsedSets["Color"]) {
+      colorGroup.classList.add("collapsed");
+    }
+
+    const colorTitle = document.createElement("div");
+    colorTitle.className = "legend-set-title";
+    colorTitle.textContent = "Color";
+    colorGroup.appendChild(colorTitle);
+
+    const colorSwatches = document.createElement("div");
+    colorSwatches.className = "color-swatches";
+
+    const currentBackground = this.currentLegendPlayerIndex !== null
+      ? this.legends[this.currentLegendPlayerIndex]
+      : null;
+
+    for (const [name, color] of Object.entries(RUNE_COLORS)) {
+      const swatch = document.createElement("div");
+      swatch.className = "color-swatch";
+      swatch.style.backgroundColor = color;
+      swatch.title = name;
+
+      if (currentBackground === color) {
+        swatch.classList.add("selected");
+      } else {
+        swatch.addEventListener("click", () => this.selectBackground(color));
+      }
+
+      colorSwatches.appendChild(swatch);
+    }
+
+    colorGroup.appendChild(colorSwatches);
+    legendGrid.appendChild(colorGroup);
+
+    colorTitle.addEventListener("click", () => {
+      colorGroup.classList.toggle("collapsed");
+      const isCollapsed = colorGroup.classList.contains("collapsed");
+      const currentCollapsed: Record<string, boolean> = JSON.parse(localStorage.getItem("collapsedSets") ?? "{}");
+      if (isCollapsed) {
+        currentCollapsed["Color"] = true;
+      } else {
+        delete currentCollapsed["Color"];
+      }
+      localStorage.setItem("collapsedSets", JSON.stringify(currentCollapsed));
+    });
+
+    // Only render legend cards if cache is loaded
+    if (!this.legendsCache) return;
 
     // Filter out Showcase rarity and dedupe by photoUrl
     const seenUrls = new Set<string>();
@@ -355,8 +452,6 @@ class RiftboundCounter {
       }
       groupedLegends[legend.setName].push(legend);
     }
-
-    legendGrid.innerHTML = "";
 
     // Reverse the order of sets
     const setEntries = Object.entries(groupedLegends).reverse();
@@ -382,7 +477,13 @@ class RiftboundCounter {
         const card = document.createElement("div");
         card.className = "legend-card";
         card.innerHTML = `<img src="${legend.photoUrl}" alt="${escapeHtml(legend.name)}" loading="lazy">`;
-        card.addEventListener("click", () => this.selectLegend(legend.photoUrl));
+
+        if (currentBackground === legend.photoUrl) {
+          card.classList.add("selected");
+        } else {
+          card.addEventListener("click", () => this.selectBackground(legend.photoUrl));
+        }
+
         cards.appendChild(card);
       }
 
@@ -404,10 +505,10 @@ class RiftboundCounter {
     }
   }
 
-  selectLegend(photoUrl: string) {
+  selectBackground(value: string) {
     if (this.currentLegendPlayerIndex === null) return;
 
-    this.legends[this.currentLegendPlayerIndex] = photoUrl;
+    this.legends[this.currentLegendPlayerIndex] = value;
     localStorage.setItem("legends", JSON.stringify(this.legends));
 
     // Update the background of the score-center
@@ -416,14 +517,24 @@ class RiftboundCounter {
       const center = counter.querySelector<HTMLElement>(".score-center");
       if (center) {
         center.classList.add("has-legend");
-        center.style.background = `
-          linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-          url("${photoUrl}") center top / cover no-repeat`;
+        this.applyBackground(center, value);
       }
     }
 
     document.getElementById("legendModal")?.classList.remove("active");
     this.currentLegendPlayerIndex = null;
+  }
+
+  applyBackground(element: HTMLElement, value: string) {
+    if (value.startsWith("#")) {
+      // It's a color
+      element.style.background = `linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), ${value}`;
+    } else {
+      // It's an image URL
+      element.style.background = `
+        linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+        url("${value}") center top / cover no-repeat`;
+    }
   }
 
   startDrag(e: MouseEvent | TouchEvent, counter: HTMLElement, playerIndex: number) {
