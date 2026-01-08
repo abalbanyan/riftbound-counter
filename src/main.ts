@@ -10,6 +10,11 @@ const RUNE_COLORS = {
 
 type RuneColorName = keyof typeof RUNE_COLORS;
 
+interface Background {
+  type: "color" | "image";
+  value: string; // color name (e.g., "Fury") or image URL
+}
+
 const ANCHOR_CONFIGS = {
   "top-left": { x: 0, y: 0, width: 0.5, height: 0.5, rotation: "rotate-180" },
   "top-right": { x: 0.5, y: 0, width: 0.5, height: 0.5, rotation: "rotate-180" },
@@ -35,7 +40,7 @@ class RiftboundCounter {
   playerCount: number;
   scores: Record<number, number>;
   names: Record<number, string>;
-  legends: Record<number, string>;
+  backgrounds: Record<number, Background>;
   slotAssignments: Record<number, AnchorName>;
   draggedElement: HTMLElement | null;
   draggedPlayerId: number | null;
@@ -50,7 +55,7 @@ class RiftboundCounter {
     this.playerCount = parseInt(localStorage.getItem("playerCount") ?? "", 10) || 2;
     this.scores = JSON.parse(localStorage.getItem("scores") ?? "null") || {};
     this.names = JSON.parse(localStorage.getItem("names") ?? "null") || {};
-    this.legends = JSON.parse(localStorage.getItem("legends") ?? "null") || {};
+    this.backgrounds = JSON.parse(localStorage.getItem("backgrounds") ?? "null") || {};
     this.slotAssignments = JSON.parse(localStorage.getItem("slotAssignments") ?? "null") || {};
     this.draggedElement = null;
     this.draggedPlayerId = null;
@@ -241,33 +246,34 @@ class RiftboundCounter {
   }
 
   ensurePlayerBackgrounds() {
-    const allColors = Object.values(RUNE_COLORS);
-    const usedColors = new Set<string>();
+    const allColorNames = Object.keys(RUNE_COLORS) as RuneColorName[];
+    const usedColorNames = new Set<string>();
 
-    // Collect colors already in use by current players
+    // Collect color names already in use by current players
     for (let i = 0; i < this.playerCount; i++) {
-      const bg = this.legends[i];
-      if (bg && bg.startsWith("#")) {
-        usedColors.add(bg);
+      const bg = this.backgrounds[i];
+      if (bg && bg.type === "color") {
+        usedColorNames.add(bg.value);
       }
     }
 
     // Assign random unused color to players without a background
     for (let i = 0; i < this.playerCount; i++) {
-      if (!this.legends[i]) {
-        const availableColors = allColors.filter((c) => !usedColors.has(c));
+      if (!this.backgrounds[i]) {
+        const availableColors = allColorNames.filter((c) => !usedColorNames.has(c));
         if (availableColors.length > 0) {
-          const randomColor = availableColors[Math.floor(Math.random() * availableColors.length)];
-          this.legends[i] = randomColor;
-          usedColors.add(randomColor);
+          const randomColorName = availableColors[Math.floor(Math.random() * availableColors.length)];
+          this.backgrounds[i] = { type: "color", value: randomColorName };
+          usedColorNames.add(randomColorName);
         } else {
           // All colors used, pick a random one
-          this.legends[i] = allColors[Math.floor(Math.random() * allColors.length)];
+          const randomColorName = allColorNames[Math.floor(Math.random() * allColorNames.length)];
+          this.backgrounds[i] = { type: "color", value: randomColorName };
         }
       }
     }
 
-    localStorage.setItem("legends", JSON.stringify(this.legends));
+    localStorage.setItem("backgrounds", JSON.stringify(this.backgrounds));
   }
 
   createCounter(playerIndex: number) {
@@ -278,11 +284,11 @@ class RiftboundCounter {
     const name = this.names[playerIndex] || `Player ${playerIndex + 1}`;
     const score = this.scores[playerIndex] || 0;
 
-    const hasLegend = !!this.legends[playerIndex];
+    const hasBackground = !!this.backgrounds[playerIndex];
 
     counter.innerHTML = `
       <button class="counter-btn minus">-</button>
-      <div class="score-center${hasLegend ? " has-legend" : ""}">
+      <div class="score-center${hasBackground ? " has-legend" : ""}">
         <div class="score-info">
           <input type="text" class="player-name" value="${escapeHtml(name)}" maxlength="20" data-player="${playerIndex}">
           <div class="score-display">${score}</div>
@@ -293,9 +299,9 @@ class RiftboundCounter {
     `;
 
     // Apply background if one exists
-    if (hasLegend) {
+    if (hasBackground) {
       const center = counter.querySelector<HTMLElement>(".score-center")!;
-      this.applyBackground(center, this.legends[playerIndex]);
+      this.applyBackground(center, this.backgrounds[playerIndex]);
     }
 
     const nameInput = counter.querySelector<HTMLInputElement>(".player-name")!;
@@ -399,7 +405,7 @@ class RiftboundCounter {
     colorSwatches.className = "color-swatches";
 
     const currentBackground = this.currentLegendPlayerIndex !== null
-      ? this.legends[this.currentLegendPlayerIndex]
+      ? this.backgrounds[this.currentLegendPlayerIndex]
       : null;
 
     for (const [name, color] of Object.entries(RUNE_COLORS)) {
@@ -408,10 +414,10 @@ class RiftboundCounter {
       swatch.style.backgroundColor = color;
       swatch.title = name;
 
-      if (currentBackground === color) {
+      if (currentBackground?.type === "color" && currentBackground.value === name) {
         swatch.classList.add("selected");
       } else {
-        swatch.addEventListener("click", () => this.selectBackground(color));
+        swatch.addEventListener("click", () => this.selectBackground({ type: "color", value: name }));
       }
 
       colorSwatches.appendChild(swatch);
@@ -478,10 +484,10 @@ class RiftboundCounter {
         card.className = "legend-card";
         card.innerHTML = `<img src="${legend.photoUrl}" alt="${escapeHtml(legend.name)}" loading="lazy">`;
 
-        if (currentBackground === legend.photoUrl) {
+        if (currentBackground?.type === "image" && currentBackground.value === legend.photoUrl) {
           card.classList.add("selected");
         } else {
-          card.addEventListener("click", () => this.selectBackground(legend.photoUrl));
+          card.addEventListener("click", () => this.selectBackground({ type: "image", value: legend.photoUrl }));
         }
 
         cards.appendChild(card);
@@ -505,11 +511,11 @@ class RiftboundCounter {
     }
   }
 
-  selectBackground(value: string) {
+  selectBackground(background: Background) {
     if (this.currentLegendPlayerIndex === null) return;
 
-    this.legends[this.currentLegendPlayerIndex] = value;
-    localStorage.setItem("legends", JSON.stringify(this.legends));
+    this.backgrounds[this.currentLegendPlayerIndex] = background;
+    localStorage.setItem("backgrounds", JSON.stringify(this.backgrounds));
 
     // Update the background of the score-center
     const counter = document.querySelector<HTMLElement>(`.score-counter[data-player="${this.currentLegendPlayerIndex}"]`);
@@ -517,7 +523,7 @@ class RiftboundCounter {
       const center = counter.querySelector<HTMLElement>(".score-center");
       if (center) {
         center.classList.add("has-legend");
-        this.applyBackground(center, value);
+        this.applyBackground(center, background);
       }
     }
 
@@ -525,15 +531,15 @@ class RiftboundCounter {
     this.currentLegendPlayerIndex = null;
   }
 
-  applyBackground(element: HTMLElement, value: string) {
-    if (value.startsWith("#")) {
-      // It's a color
-      element.style.background = value;
+  applyBackground(element: HTMLElement, background: Background) {
+    if (background.type === "color") {
+      const color = RUNE_COLORS[background.value as RuneColorName] ?? background.value;
+      element.style.background = color;
     } else {
       // It's an image URL
       element.style.background = `
         linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-        url("${value}") center top / cover no-repeat`;
+        url("${background.value}") center top / cover no-repeat`;
     }
   }
 
@@ -831,11 +837,11 @@ class RiftboundCounter {
   resetAll() {
     this.scores = {};
     this.names = {};
-    this.legends = {};
+    this.backgrounds = {};
     this.slotAssignments = {};
     localStorage.setItem("scores", JSON.stringify(this.scores));
     localStorage.setItem("names", JSON.stringify(this.names));
-    localStorage.setItem("legends", JSON.stringify(this.legends));
+    localStorage.setItem("backgrounds", JSON.stringify(this.backgrounds));
     localStorage.setItem("slotAssignments", JSON.stringify(this.slotAssignments));
     this.ensureSlotAssignments();
     this.renderCounters();
